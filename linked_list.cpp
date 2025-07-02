@@ -1,11 +1,12 @@
 #include <iostream>
+#include <utility>
 using namespace std;
 
 struct Node
 {
-    int val;
-    Node* next;
-    Node() : val(0), next(nullptr) {}
+    int val{};
+    Node* next{nullptr};
+    Node() = default;
     Node(int val) : val(val), next(nullptr) {}
     Node(int val, Node* next) : val(val), next(next) {}
 };
@@ -13,9 +14,41 @@ struct Node
 class LinkedList
 {
 private:
-    Node* head;
+    Node* head{nullptr};
+
+    static Node* deepcopy(Node* srcHead){
+        if(srcHead == nullptr){
+            return nullptr;
+        }
+
+        Node* newHead = new Node(srcHead->val);
+        Node* src = srcHead->next;
+        Node* dst = newHead;
+
+        while (src != nullptr)
+        {
+            dst->next = new Node(src->val);
+            dst = dst->next;
+            src = src->next;
+        }
+        return newHead;
+    }
+
 public:
-    LinkedList() : head(nullptr) {};
+    // default constructor
+    LinkedList() = default;
+
+    // copy constructor
+    LinkedList(const LinkedList& other) : head(deepcopy(other.head)) {}
+
+    // move constructor
+    LinkedList(LinkedList&& other)noexcept : head(std::exchange(other.head, nullptr)) {}
+
+    // copy assignment
+    LinkedList& operator=(LinkedList other){
+        swap(other);
+        return *this;
+    }
 
     void insert(int value){
         Node* newNode = new Node(value);
@@ -56,7 +89,7 @@ public:
         }
     }
 
-    void printList() const{
+    void print() const{
         Node* curr = head;
         while(curr != nullptr){
             cout << curr->val << "->";
@@ -109,11 +142,32 @@ public:
         }
     }
 
+    void swap(LinkedList& other) noexcept { std::swap(head, other.head); }
+
+    // destructor
     ~LinkedList(){
-        while(head != nullptr){
-            Node* curr = head;
-            head = head->next;
-            delete curr;
-        }
+        deleteAll();
     }
 };
+
+int main() {
+    LinkedList a;
+    a.insert(1); a.insert(2); a.insert(3);
+    cout << "A : "; a.print();
+
+    LinkedList b = a;           // copy ctor
+    cout << "B(copy A): "; b.print();
+
+    LinkedList c(std::move(a)); // move ctor
+    cout << "C(move A): "; c.print();
+    cout << "A after move : "; a.print();
+
+    LinkedList d;
+    d.insert(9);
+    d = b;                      // copy =
+    cout << "D=b : "; d.print();
+
+    d = std::move(c);           // move =
+    cout << "D=move(C): "; d.print();
+    cout << "C after move=: ";  c.print();
+}
