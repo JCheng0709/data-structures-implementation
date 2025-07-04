@@ -18,24 +18,55 @@ private:
     Node* head{nullptr};
     Node* tail{nullptr};
 
+    mutable size_t _size{0};
+    mutable bool _sizeValid{true};
+
+    size_t calculateSize() const{
+        Node* curr = head;
+        size_t length = 0;
+        while(curr != nullptr){
+            curr = curr->next;
+            length++;
+        }
+        return length;
+    }
+
+    void invalidateSize() const{
+        _sizeValid = false;
+    }
+
     static std::pair<Node*, Node*> deepCopy(Node* srcHead){
         if(srcHead == nullptr){
             return {nullptr, nullptr};
         }
 
-        Node* newHead = new Node(srcHead->val);
-        Node* newTail = newHead;
-        Node* src = srcHead->next;
-        Node* dst = newHead;
+        Node* newHead = nullptr;
+        try
+        {
+            newHead = new Node(srcHead->val);
+            Node* newTail = newHead;
+            Node* src = srcHead->next;
+            Node* dst = newHead;
 
-        while(src != nullptr){
-            dst->next = new Node(src->val);
-            dst->next->prev = dst;
-            dst = dst->next;
-            newTail = dst;
-            src = src->next;
+            while(src != nullptr){
+                dst->next = new Node(src->val);
+                dst->next->prev = dst;
+                dst = dst->next;
+                newTail = dst;
+                src = src->next;
+            }
+            return {newHead, newTail};
         }
-        return {newHead, newTail};
+        catch(const std::bad_alloc&)
+        {
+            while (newHead != nullptr)
+            {
+                Node* temp = newHead;
+                newHead = newHead->next;
+                delete temp;
+            }
+            throw;            
+        }
     }
 
     void clear(){
@@ -45,6 +76,8 @@ private:
             delete curr;
         }
         tail = nullptr;
+        _size = 0;
+        _sizeValid = true;
     }
 
 public:
@@ -56,10 +89,23 @@ public:
         std::pair<Node*, Node*> result = deepCopy(other.head);
         head = result.first;
         tail = result.second;
+
+        if(other._sizeValid){
+            _size = other._size;
+            _sizeValid = true;
+        }
+        else{
+            _sizeValid = false;
+        }
     }
 
     // move ctor
-    DoublyLinkedList(DoublyLinkedList&& other)noexcept : head(std::exchange(other.head, nullptr)), tail(std::exchange(other.tail, nullptr)) {}
+    DoublyLinkedList(DoublyLinkedList&& other)noexcept
+     : head(std::exchange(other.head, nullptr)),
+       tail(std::exchange(other.tail, nullptr)),
+       _size(std::exchange(other._size, 0)),
+       _sizeValid(std::exchange(other._sizeValid, true)) {}
+
 
     // copy & move assignment
     DoublyLinkedList& operator=(DoublyLinkedList other){
@@ -75,109 +121,126 @@ public:
     void swap(DoublyLinkedList& other) noexcept{
         std::swap(head, other.head);
         std::swap(tail, other.tail);
+        std::swap(_size, other._size);
+        std::swap(_sizeValid, other._sizeValid);
     }
 
-    int size() const{
-        Node* curr = head;
-        int length = 0;
-        while (curr != nullptr)
-        {
-            length++;
-            curr = curr->next;
+    size_t size() const noexcept{
+        if(!_sizeValid){
+            _size = calculateSize();
+            _sizeValid = true;
         }
-        return length;
+        return _size;
     }
 
-    bool empty() const{
+    bool empty() const noexcept{
         return (head == nullptr);
     }
 
-    void pushFront(int value){
+    void insertFront(int value){
         Node* newNode = new Node(value);
         if(head == nullptr){
             head = tail = newNode;
+            _size = 1;
+            _sizeValid = true;
             return;
         }
 
         newNode->next = head;
         head->prev = newNode;
         head = newNode;
+        invalidateSize();
     }
 
     void pushBack(int value){
         Node* newNode = new Node(value);
         if(head == nullptr){
             head = tail = newNode;
+            _size = 1;
+            _sizeValid = true;
         }
         else{
             tail->next = newNode;
             newNode->prev = tail;
             tail = newNode;
+            invalidateSize();
         }
     }
 
     void popFront(){
         if(empty()){
-            return;
+            throw std::runtime_error("Cannot pop from empty list");
         }
 
         Node* temp = head;
         if(head == tail){
             head = tail = nullptr;
+            _size = 0;
+            _sizeValid = true;
         }
         else{
             head = head->next;
             head->prev = nullptr;
+            invalidateSize();
         }
         delete temp;
     }
 
     void popBack(){
         if(empty()){
-            return;
+            throw std::runtime_error("Cannot pop from empty list");
         }
 
         Node* temp = tail;
         if(head == tail){
             head = tail = nullptr;
+            _size = 0;
+            _sizeValid = true;
         }
         else{
             tail = tail->prev;
             tail->next = nullptr;
+            invalidateSize();
         }
         delete temp;
     }
 
-    /*
+    
     Node* getNodeAt(int index) const{
         if(index < 0){
             return nullptr;
         }
-        if(index < size() / 2){
 
+        size_t listSize = size();
+        if(static_cast<size_t>(index) >= listSize){
+            return nullptr;
         }
-    }*/
+        if(static_cast<size_t>(index) < listSize / 2){
+            Node* curr = head;
+            for(int i = 0; i < index; i++){
+                curr = curr->next;
+            }
+            return curr;
+        }
+        else{
+            Node* curr = tail;
+            for(size_t i = listSize - 1; i > static_cast<size_t>(index); i--){
+                curr = curr->prev;
+            }
+            return curr;
+        }
+    }
 
     void insert(int value, int index){
         if(index < 0){
             return;
         }
         if(index == 0){
-            pushFront(value);
+            insertFront(value);
             return;
         }
 
-        Node* curr = head;
-        int steps = 0;
-        while(curr != nullptr){
-            if(steps < index){
-                curr = curr->next;
-                steps++;
-            }
-            else{
-                break;
-            }
-        }
+        Node* curr = getNodeAt(index);
 
         if(curr == nullptr){
             pushBack(value);
@@ -189,6 +252,7 @@ public:
             newNode->prev = prevNode;
             curr->prev = newNode;
             prevNode->next = newNode;
+            invalidateSize();
         }
     }
 
@@ -212,6 +276,7 @@ public:
                     curr->next->prev = curr->prev;
                 }
                 delete curr;
+                invalidateSize();
                 return;
             }
             curr = curr->next;
@@ -227,18 +292,7 @@ public:
             return;
         }
 
-        Node* curr = head;
-        int steps = 0;
-        while(curr != nullptr){
-            if(steps < index){
-                curr = curr->next;
-                steps++;
-            }
-            else{
-                break;
-            }
-        }
-
+        Node* curr = getNodeAt(index);
         if(curr != nullptr){
             if(curr == tail){
                 popBack();
@@ -247,6 +301,7 @@ public:
                 curr->prev->next = curr->next;
                 curr->next->prev = curr->prev;
                 delete curr;
+                invalidateSize();
             }
         }
     }
