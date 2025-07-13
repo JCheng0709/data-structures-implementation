@@ -1,76 +1,147 @@
 #include <iostream>
-using namespace std;
+#include <utility>
+#include <stdexcept>
+#include <limits>
+#include <type_traits>
 
 template <typename T>
 class stack
 {
 private:
     T* data;
-    int ptr;
-    int cap;
-    
-public:
-    stack(int cap): cap(cap), ptr(-1){
-        data = new T[cap];
+    std::size_t ptr;
+    std::size_t cap;
+    double growth = 2.0;
+
+    void resize(size_t newCap){
+        if(newCap <= cap){
+            return;
+        }
+        T* newData = nullptr;
+        try
+        {
+            newData = new T[newCap];
+            for(std::size_t i = 0; i < ptr; i++){
+                // checks whether type T has a noexcept move constructor
+                // if it does, return true, then false
+                if (std::is_nothrow_move_constructible<T>::value){
+                   newData[i] = std::move(data[i]);
+                }
+                else{
+                    newData[i] = data[i];
+                }
+            }
+        }
+        catch(...)
+        {
+            delete [] newData;
+            throw;
+        }
+        delete [] data;
+        data = newData;
+        cap = newCap;
     }
 
-    stack(int cap, T defaultValue): cap(cap), ptr(cap - 1){
-        data = new T[cap];
-        for(int i = 0; i < cap; i++){
-            data[i] = defaultValue;
+    void ensureCapacity(){
+        if(ptr >= cap){
+            std::size_t newCap = calculateNewCapacity();
+            resize(newCap);
         }
     }
 
-    ~stack(){
+    std::size_t calculateNewCapacity(){
+        if(cap == 0){
+            return 1;
+        }
+
+        std::size_t maxCap = std::numeric_limits<size_t>::max() / sizeof(T);
+        if(cap > maxCap / growth){
+            return maxCap;
+        }
+        return static_cast<size_t>(cap * growth);
+    }
+    
+public:
+    // ctor
+    explicit stack(std::size_t cap): cap(cap), ptr(0){
+        data = new T[cap];
+    }
+
+    // copy ctor
+    stack(const stack& other) : data(new T[other.cap]), ptr(other.ptr), cap(other.cap){
+        for(std::size_t i = 0; i < ptr; i++){
+            data[i] = other.data[i];
+        }
+    }
+
+    // move ctor
+    stack(stack&& other) noexcept
+     : data(std::exchange(other.data, nullptr)), 
+       ptr(std::exchange(other.ptr, 0)), 
+       cap(std::exchange(other.cap, 0)){}
+
+    // copy & move assignment
+    stack& operator=(stack other)noexcept{
+        swap(other);
+        return *this;
+    }
+
+    // destructor
+    ~stack()noexcept{
         delete[] data;
     }
 
-    bool push(T value){
-        if(ptr >= cap - 1){
-            cout << "Stack overflow" << endl;
-            return false;
-        }
-        data[++ptr]  = value;
-        return true;
+    void swap(stack& other) noexcept{
+        std::swap(data, other.data);
+        std::swap(ptr, other.ptr);
+        std::swap(cap, other.cap);
     }
 
-    bool pop(){
-        if(ptr < 0){
-            cout << "Stack is empty" << endl;
-            return false;
+    void push(const T& value){
+        /*if(ptr >= cap){
+            throw runtime_error("stack overflow : cannot push with full stack");
+        }*/
+        ensureCapacity();
+        data[ptr] = value;
+        ++ptr;
+    }
+
+    void pop(){
+        if(ptr == 0){
+            throw std::runtime_error("stack underflow : cannot pop with empty stack");
         }
+        
         --ptr;
-        return true;
     }
 
-    T top() const{
-        if(ptr >= 0){
-            return data[ptr];
+    T& top(){
+        if(ptr > 0){
+            return data[ptr - 1];
         }
-        throw runtime_error("Stack is empty");
+        throw std::runtime_error("Cannot access top of empty stack");
     }
 
-    bool isEmpty() const{
-        return ptr == -1;
+    bool isEmpty() const noexcept{
+        return ptr == 0;
     }
 
-    bool isFull() const{
-        return ptr == cap - 1;
+    bool isFull() const noexcept{
+        return ptr == cap;
     }
 
-    int size() const{
-        return ptr + 1;
+    size_t size() const noexcept{
+        return ptr;
     }
 
-    void clear(){
-        ptr = -1;
+    void clear() noexcept{
+        ptr = 0;
     }
 
     void print() const {
-        cout << "Stack (top->bottom): ";    
-        for(int i = ptr; i >= 0; i--){
-            cout << data[i] << " ";
+        std::cout << "Stack (top->bottom): ";    
+        for(std::size_t i = 0; i < ptr; i++){
+            std::cout << data[ptr - 1 - i] << " ";
         }
-        cout << endl;
+        std::cout << std::endl;
     }
 };
