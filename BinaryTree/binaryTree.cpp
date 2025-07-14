@@ -2,28 +2,30 @@
 #include <utility>
 #include <vector>
 #include <queue>
+#include <memory>
+#include <algorithm>
 
 struct TreeNode
 {
-    int val{};
-    TreeNode* left{nullptr};
-    TreeNode* right{nullptr};
-    TreeNode() = default;
+    int val;
+    std::unique_ptr<TreeNode> left, right;
+    TreeNode() : val(0), left(nullptr), right(nullptr) {}
     TreeNode(int val) : val(val), left(nullptr), right(nullptr){}
-    TreeNode(int val, TreeNode* left, TreeNode* right) : val(val), left(left), right(right){}
+    // C++11 不能在建構子中使用 move，所以移除這個建構子
 };
 
 class binaryTree
 {
 private:
-    TreeNode* root{nullptr};
+    std::unique_ptr<TreeNode> root;
 
-    TreeNode* deepCopy(TreeNode* srcNode){
+    std::unique_ptr<TreeNode> deepCopy(const std::unique_ptr<TreeNode>& srcNode){
         if(srcNode == nullptr){
-            return nullptr;
+            return nullptr;  // C++11 可以使用 nullptr
         }
 
-        TreeNode* newNode = new TreeNode(srcNode->val);
+        // C++11 沒有 make_unique，需要手動建立
+        std::unique_ptr<TreeNode> newNode(new TreeNode(srcNode->val));
         newNode->left = deepCopy(srcNode->left);
         newNode->right = deepCopy(srcNode->right);
         
@@ -32,7 +34,7 @@ private:
 
 public:
     // ctor
-    binaryTree() = default;
+    binaryTree() : root(nullptr) {}
 
     binaryTree(int val) : root(new TreeNode(val)) {}
 
@@ -40,7 +42,9 @@ public:
     binaryTree(const binaryTree& other) : root(deepCopy(other.root)) {}
 
     // move ctor
-    binaryTree(binaryTree&& other)noexcept : root(std::exchange(other.root, nullptr)) {}
+    binaryTree(binaryTree&& other) : root(std::move(other.root)) {
+        other.root = nullptr;
+    }
 
     // copy & move assignment
     binaryTree& operator=(binaryTree other){
@@ -48,58 +52,70 @@ public:
         return *this;
     }
 
-    // destructor
-    ~binaryTree();
+    // destructor - unique_ptr 會自動清理，所以可以使用預設
+    ~binaryTree() {}
 
-    void swap(binaryTree& other) noexcept{
+    void clear(){
+        root.reset();  // 釋放整個樹
+    }
+
+    void swap(binaryTree& other){
         std::swap(root, other.root);
     }
 
     void insert(int val){
-        TreeNode* newNode = new TreeNode(val);
+        std::unique_ptr<TreeNode> newNode(new TreeNode(val));
         if(root == nullptr){
-            root = newNode;
+            root = std::move(newNode);
             return;
         }
 
         std::queue<TreeNode*> queue;
-        queue.push(root);
+        queue.push(root.get());
         while(!queue.empty()){
             TreeNode* curr = queue.front();
             queue.pop();
             if(curr->left == nullptr){
-                curr->left = newNode;
+                curr->left = std::move(newNode);
                 return;
             }
             else if(curr->right == nullptr){
-                curr->right = newNode;
+                curr->right = std::move(newNode);
                 return;
             }
-            queue.push(curr->left);
-            queue.push(curr->right);
+            queue.push(curr->left.get());
+            queue.push(curr->right.get());
         }
     }
 
-    bool findDFS(TreeNode* root, int value){
-        if(root == nullptr){
+    bool findDFS(int value){
+        return findDFSHelper(root, value);
+    }
+
+    bool findDFSHelper(const std::unique_ptr<TreeNode>& node, int value){
+        if(node == nullptr){
             return false;
         }
 
-        if(root->val == value){
+        if(node->val == value){
             return true;
         }
-        bool left = findDFS(root->left, value);
-        bool right = findDFS(root->right, value);
+        bool left = findDFSHelper(node->left, value);
+        bool right = findDFSHelper(node->right, value);
 
         return (left || right);
     }
 
-    bool findBFS(TreeNode* root, int value){
-        if(root == nullptr){
+    bool findBFS(int value){
+        return findBFSHelper(root, value);
+    }
+
+    bool findBFSHelper(const std::unique_ptr<TreeNode>& node, int value){
+        if(node == nullptr){
             return false;
         }
         std::queue<TreeNode*> queue;
-        queue.push(root);
+        queue.push(node.get());
         while(!queue.empty()){
             TreeNode* curr = queue.front();
             queue.pop();
@@ -107,10 +123,10 @@ public:
                 return true;
             }
             if(curr->left != nullptr){
-                queue.push(curr->left);
+                queue.push(curr->left.get());
             }
             if(curr->right != nullptr){
-                queue.push(curr->right);
+                queue.push(curr->right.get());
             }
         }
         return false;
@@ -120,117 +136,128 @@ public:
         return removeHelper(root, value);
     }
 
-
-    bool removeHelper(TreeNode*& root, int value){
-        if(root == nullptr){
+    bool removeHelper(std::unique_ptr<TreeNode>& node, int value){
+        if(node == nullptr){
             return false;
         }
-        if(root->val == value){
-            deleteNode(root);
+        if(node->val == value){
+            deleteNode(node);
             return true;
         }
 
-        bool left = removeHelper(root->left, value);
-        bool right = removeHelper(root->right, value);
+        bool left = removeHelper(node->left, value);
+        bool right = removeHelper(node->right, value);
 
         return left || right;
     }
 
-    void deleteNode(TreeNode*& root){
+    void deleteNode(std::unique_ptr<TreeNode>& node){
         // leaf node
-        if(root->left == nullptr && root->right == nullptr){
-            delete root;
-            root = nullptr;
+        if(node->left == nullptr && node->right == nullptr){
+            node.reset();  // 自動釋放記憶體
         }
-        else if(root->left == nullptr){
-            TreeNode* temp = root;
-            root = root->right;
-            delete temp;
+        else if(node->left == nullptr){
+            node = std::move(node->right);
         }
-        else if(root->right == nullptr){
-            TreeNode* temp = root;
-            root = root->left;
-            delete temp;
+        else if(node->right == nullptr){
+            node = std::move(node->left);
         }
         else{
-            twoChildrenDelete(root);
+            twoChildrenDelete(node);
         }
     }
 
-    void twoChildrenDelete(TreeNode*& node){
-        TreeNode* leftTree = node->left;
-        TreeNode* rightTree = node->right;
-        TreeNode* rightMost = leftTree;
+    void twoChildrenDelete(std::unique_ptr<TreeNode>& node){
+        std::unique_ptr<TreeNode> leftTree = std::move(node->left);
+        std::unique_ptr<TreeNode> rightTree = std::move(node->right);
+        
+        TreeNode* rightMost = leftTree.get();
         while(rightMost->right != nullptr){
-            rightMost = rightMost->right;
+            rightMost = rightMost->right.get();
         }
-        rightMost->right = rightTree;
-        delete node;
-        node = leftTree;
+        rightMost->right = std::move(rightTree);
+        node = std::move(leftTree);
     }
 
-    void inorder(TreeNode* root){ // left root right
-        if(root == nullptr){
+    void inorder(){ // left root right
+        inorderHelper(root);
+    }
+
+    void inorderHelper(const std::unique_ptr<TreeNode>& node){
+        if(node == nullptr){
             return;
         }
 
-        inorder(root->left);
-        std::cout << root->val << std::endl;
-        inorder(root->right);
-        return;
+        inorderHelper(node->left);
+        std::cout << node->val << std::endl;
+        inorderHelper(node->right);
     }
 
-    void preorder(TreeNode* root){ // root left right
-        if(root == nullptr){
+    void preorder(){ // root left right
+        preorderHelper(root);
+    }
+
+    void preorderHelper(const std::unique_ptr<TreeNode>& node){
+        if(node == nullptr){
             return;
         }
 
-        std::cout << root->val << std::endl;
-        preorder(root->left);
-        preorder(root->right);
-        return;
+        std::cout << node->val << std::endl;
+        preorderHelper(node->left);
+        preorderHelper(node->right);
     }
 
-    void postorder(TreeNode* root){ // left right root
-        if(root == nullptr){
+    void postorder(){ // left right root
+        postorderHelper(root);
+    }
+
+    void postorderHelper(const std::unique_ptr<TreeNode>& node){
+        if(node == nullptr){
             return;
         }
-        postorder(root->left);
-        postorder(root->right);
-        std::cout << root->val << std::endl;
-        return;
+        postorderHelper(node->left);
+        postorderHelper(node->right);
+        std::cout << node->val << std::endl;
     }
 
-    std::vector<int> bfsTraverse(TreeNode* root){
+    std::vector<int> bfsTraverse(){
+        return bfsTraverseHelper(root);
+    }
+
+    std::vector<int> bfsTraverseHelper(const std::unique_ptr<TreeNode>& node){
         std::vector<int> result;
-        if(root == nullptr){
-            return {};
+        if(node == nullptr){
+            return result;  // 或者可以直接 return {};
         }
 
         std::queue<TreeNode*> queue;
-        queue.push(root);
+        queue.push(node.get());
         while(!queue.empty()){
             TreeNode* curr = queue.front();
             queue.pop();
             result.push_back(curr->val);
             if(curr->left != nullptr){
-                queue.push(curr->left);
+                queue.push(curr->left.get());
             }
             if(curr->right != nullptr){
-                queue.push(curr->right);
+                queue.push(curr->right.get());
             }
         }
         return result;
     }
 
-    std::vector<std::vector<int>> bfsTraverseLevel(TreeNode* root){
-        std::vector<std::vector<int>> result;
-        if(root == nullptr){
+    std::vector<std::vector<int> > bfsTraverseLevel(){  // C++11 需要空格
+        return bfsTraverseLevelHelper(root);
+    }
+
+    std::vector<std::vector<int> > bfsTraverseLevelHelper(const std::unique_ptr<TreeNode>& node){
+        std::vector<std::vector<int> > result;  // C++11 需要空格
+        if(node == nullptr){
             return result;
         }
 
         std::queue<TreeNode*> q;
-        q.push(root);
+        q.push(node.get());
         while(!q.empty()){
             std::vector<int> currLevel;
             int nodeInCurrLevel = q.size();
@@ -241,15 +268,40 @@ public:
                 currLevel.push_back(curr->val);
 
                 if(curr->left != nullptr){
-                    q.push(curr->left);
+                    q.push(curr->left.get());
                 }
                 if(curr->right != nullptr){
-                    q.push(curr->right);
+                    q.push(curr->right.get());
                 }
                 
             }
             result.push_back(currLevel);
         }
         return result;
+    }
+
+    // 提供 getter 以便外部測試
+    TreeNode* getRoot() const {
+        return root.get();
+    }
+
+    size_t height(std::unique_ptr<TreeNode>& root){
+        if(root == nullptr){
+            return 0;
+        }
+
+        size_t left = height(root->left);
+        size_t right = height(root->right);
+
+        return (left >= right) ? left+1 : right+1;
+    }
+
+    size_t treeSize(){
+        std::vector<int> tree = bfsTraverse();
+        return tree.size();
+    }
+
+    bool isEmpty(std::unique_ptr<TreeNode> root){
+        return (root == nullptr);
     }
 };
