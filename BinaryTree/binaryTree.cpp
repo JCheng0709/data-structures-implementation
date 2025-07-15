@@ -168,16 +168,61 @@ public:
     }
 
     void twoChildrenDelete(std::unique_ptr<TreeNode>& node){
-        std::unique_ptr<TreeNode> leftTree = std::move(node->left);
-        std::unique_ptr<TreeNode> rightTree = std::move(node->right);
-        
-        TreeNode* rightMost = leftTree.get();
-        while(rightMost->right != nullptr){
-            rightMost = rightMost->right.get();
+    // 1. 選擇走「後繼」或「前驅」
+        bool useSuccessor = (node->right != nullptr);
+        auto* link = useSuccessor ? &node->right : &node->left;   // link 是  unique_ptr<TreeNode>* 型別
+
+        // 2. 找到最小(或最大)節點的 link
+        while ((*link)-> (useSuccessor ? left : right) ) {
+            link = useSuccessor ? &(*link)->left : &(*link)->right;
         }
-        rightMost->right = std::move(rightTree);
-        node = std::move(leftTree);
+
+        // 3. *link 就是 succ；用其值覆寫
+        node->val = (*link)->val;
+
+        // 4. 讓它唯一的子樹(若有)頂上；順序安全於 C++11+
+        std::unique_ptr<TreeNode> orphan =
+            useSuccessor ? std::move((*link)->right)
+                        : std::move((*link)->left);
+        link->reset(orphan.release());   // link 指向新子樹；舊 succ 自動刪除
     }
+
+    /*void twoChildrenDelete(std::unique_ptr<TreeNode>& node){
+        TreeNode* succParent = node.get();
+        TreeNode* succ = node.get();
+        if(node->right != nullptr){
+            succ = node->right.get();
+            succParent = node.get();
+            while(succ->left != nullptr){
+                succParent = succ;
+                succ = succ->left.get();
+            }
+
+            node->val = succ->val;
+            if(succParent->left.get() == succ){
+                succParent->left.reset(succ->right.release());
+            }
+            else{
+                succParent->right.reset(succ->right.release());
+            }
+        }
+        else if(node->left != nullptr){
+            succ = node->left.get();
+            succParent = node.get();
+            while(succ->right != nullptr){
+                succParent = succ;
+                succ = succ->right.get();
+            }
+
+            node->val = succ->val;
+            if(succParent->right.get() == succ){
+                succParent->right.reset(succ->left.release());
+            }
+            else{
+                succParent->left.reset(succ->left.release());
+            }
+        }
+    }*/
 
     void inorder(){ // left root right
         inorderHelper(root);
