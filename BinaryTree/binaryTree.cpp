@@ -42,12 +42,10 @@ public:
     binaryTree(const binaryTree& other) : root(deepCopy(other.root)) {}
 
     // move ctor
-    binaryTree(binaryTree&& other) : root(std::move(other.root)) {
-        other.root = nullptr;
-    }
+    binaryTree(binaryTree&& other) noexcept : root(std::move(other.root)) {}
 
     // copy & move assignment
-    binaryTree& operator=(binaryTree other){
+    binaryTree& operator=(binaryTree other) noexcept{
         swap(other);
         return *this;
     }
@@ -69,64 +67,49 @@ public:
             root = std::move(newNode);
             return;
         }
+        
 
-        std::queue<TreeNode*> queue;
-        queue.push(root.get());
-        while(!queue.empty()){
-            TreeNode* curr = queue.front();
-            queue.pop();
-            if(curr->left == nullptr){
-                curr->left = std::move(newNode);
+        TreeNode* curr = root.get();
+        TreeNode* parent = root.get();
+        while(curr != nullptr){
+            parent = curr;
+            if(curr->val > val){
+                curr = curr->left.get();
+            }
+            else if(curr->val < val){
+                curr = curr->right.get();
+            }
+            else{
                 return;
             }
-            else if(curr->right == nullptr){
-                curr->right = std::move(newNode);
-                return;
-            }
-            queue.push(curr->left.get());
-            queue.push(curr->right.get());
+        }
+        if(parent->val > val){
+            parent->left = std::move(newNode);
+        }
+        else{
+            parent->right = std::move(newNode);
         }
     }
 
-    bool findDFS(int value){
-        return findDFSHelper(root, value);
+    bool find(int value){
+        return findHelper(root, value);
     }
 
-    bool findDFSHelper(const std::unique_ptr<TreeNode>& node, int value){
+    bool findHelper(const std::unique_ptr<TreeNode>& node, int value){
         if(node == nullptr){
             return false;
         }
 
-        if(node->val == value){
-            return true;
-        }
-        bool left = findDFSHelper(node->left, value);
-        bool right = findDFSHelper(node->right, value);
-
-        return (left || right);
-    }
-
-    bool findBFS(int value){
-        return findBFSHelper(root, value);
-    }
-
-    bool findBFSHelper(const std::unique_ptr<TreeNode>& node, int value){
-        if(node == nullptr){
-            return false;
-        }
-        std::queue<TreeNode*> queue;
-        queue.push(node.get());
-        while(!queue.empty()){
-            TreeNode* curr = queue.front();
-            queue.pop();
-            if(curr->val == value){
+        const TreeNode* curr = node.get();
+        while(curr != nullptr){
+            if(curr->val > value){
+                curr = curr->left.get();
+            }
+            else if(curr->val < value){
+                curr = curr->right.get();
+            }
+            else{
                 return true;
-            }
-            if(curr->left != nullptr){
-                queue.push(curr->left.get());
-            }
-            if(curr->right != nullptr){
-                queue.push(curr->right.get());
             }
         }
         return false;
@@ -140,21 +123,14 @@ public:
         if(node == nullptr){
             return false;
         }
-        if(node->val == value){
-            deleteNode(node);
-            return true;
+        if(node->val < value){
+            return removeHelper(node->right, value);
         }
-
-        bool left = removeHelper(node->left, value);
-        bool right = removeHelper(node->right, value);
-
-        return left || right;
-    }
-
-    void deleteNode(std::unique_ptr<TreeNode>& node){
-        // leaf node
+        if(node->val > value){
+            return removeHelper(node->left, value);
+        }
         if(node->left == nullptr && node->right == nullptr){
-            node.reset();  // 自動釋放記憶體
+            node.reset();
         }
         else if(node->left == nullptr){
             node = std::move(node->right);
@@ -163,41 +139,12 @@ public:
             node = std::move(node->left);
         }
         else{
-            twoChildrenDelete(node);
-        }
-    }
-
-    void twoChildrenDelete(std::unique_ptr<TreeNode>& node){
-    // 1. 選擇走「後繼」或「前驅」
-        bool useSuccessor = (node->right != nullptr);
-        auto* link = useSuccessor ? &node->right : &node->left;   // link 是  unique_ptr<TreeNode>* 型別
-
-        // 2. 找到最小(或最大)節點的 link
-        while ((*link)-> (useSuccessor ? left : right) ) {
-            link = useSuccessor ? &(*link)->left : &(*link)->right;
-        }
-
-        // 3. *link 就是 succ；用其值覆寫
-        node->val = (*link)->val;
-
-        // 4. 讓它唯一的子樹(若有)頂上；順序安全於 C++11+
-        std::unique_ptr<TreeNode> orphan =
-            useSuccessor ? std::move((*link)->right)
-                        : std::move((*link)->left);
-        link->reset(orphan.release());   // link 指向新子樹；舊 succ 自動刪除
-    }
-
-    /*void twoChildrenDelete(std::unique_ptr<TreeNode>& node){
-        TreeNode* succParent = node.get();
-        TreeNode* succ = node.get();
-        if(node->right != nullptr){
-            succ = node->right.get();
-            succParent = node.get();
+            TreeNode* succParent = node.get();
+            TreeNode* succ = node->right.get();
             while(succ->left != nullptr){
                 succParent = succ;
                 succ = succ->left.get();
             }
-
             node->val = succ->val;
             if(succParent->left.get() == succ){
                 succParent->left.reset(succ->right.release());
@@ -206,23 +153,8 @@ public:
                 succParent->right.reset(succ->right.release());
             }
         }
-        else if(node->left != nullptr){
-            succ = node->left.get();
-            succParent = node.get();
-            while(succ->right != nullptr){
-                succParent = succ;
-                succ = succ->right.get();
-            }
-
-            node->val = succ->val;
-            if(succParent->right.get() == succ){
-                succParent->right.reset(succ->left.release());
-            }
-            else{
-                succParent->left.reset(succ->left.release());
-            }
-        }
-    }*/
+        return true;
+    }
 
     void inorder(){ // left root right
         inorderHelper(root);
@@ -330,7 +262,7 @@ public:
         return root.get();
     }
 
-    size_t height(std::unique_ptr<TreeNode>& root){
+    size_t height(const std::unique_ptr<TreeNode>& root) const{
         if(root == nullptr){
             return 0;
         }
@@ -346,7 +278,7 @@ public:
         return tree.size();
     }
 
-    bool isEmpty(std::unique_ptr<TreeNode> root){
+    bool isEmpty() const{
         return (root == nullptr);
     }
 };
