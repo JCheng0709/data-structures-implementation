@@ -70,7 +70,7 @@ public:
     }
 
     void update(TreeNode* node){
-        
+
     }
 
     int getBalance(std::unique_ptr<TreeNode>& root){
