@@ -11,8 +11,7 @@ struct TreeNode
     int height;
     std::unique_ptr<TreeNode> left, right;
     TreeNode() : val(0), height(0), left(nullptr), right(nullptr) {}
-    TreeNode(int val) : val(val), height(height), left(nullptr), right(nullptr){}
-    // C++11 不能在建構子中使用 move，所以移除這個建構子
+    TreeNode(int val) : val(val), height(1), left(nullptr), right(nullptr){}
 };
 
 class AVL_Tree
@@ -22,11 +21,11 @@ private:
 
     std::unique_ptr<TreeNode> deepCopy(const std::unique_ptr<TreeNode>& srcNode){
         if(srcNode == nullptr){
-            return nullptr;  // C++11 可以使用 nullptr
+            return nullptr;
         }
 
-        // C++11 沒有 make_unique，需要手動建立
         std::unique_ptr<TreeNode> newNode(new TreeNode(srcNode->val));
+        newNode->height = srcNode->height;
         newNode->left = deepCopy(srcNode->left);
         newNode->right = deepCopy(srcNode->right);
         
@@ -51,51 +50,71 @@ public:
         return *this;
     }
 
-    // destructor - unique_ptr 會自動清理，所以可以使用預設
+    // destructor
     ~AVL_Tree() {}
 
     void clear(){
-        root.reset();  // 釋放整個樹
+        root.reset();
     }
 
     void swap(AVL_Tree& other){
         std::swap(root, other.root);
     }
 
-    int height(const std::unique_ptr<TreeNode>& root) const{
+    static int height(const std::unique_ptr<TreeNode>& root){
         if(root == nullptr){
             return 0;
         }
         return root->height;
     }
 
-    void update(TreeNode* node){
-
+    static void update(TreeNode* node){
+        node->height = 1 + std::max(height(node->left), height(node->right));
     }
 
-    int getBalance(std::unique_ptr<TreeNode>& root){
+    static int getBalance(std::unique_ptr<TreeNode>& root){
         if(root == nullptr){
             return 0;
         }
         return (height(root->left) - height(root->right));
     }
 
-    void rotateRight(std::unique_ptr<TreeNode>& root){
-        std::unique_ptr<TreeNode> otherNode = std::move(root->left);
-        root->left = std::move(otherNode->right);
-        otherNode->right = std::move(root);
-        root = std::move(otherNode);
+    static std::unique_ptr<TreeNode> rotateRight(std::unique_ptr<TreeNode> node) {
+        std::unique_ptr<TreeNode> newRoot = std::move(node->left);
+        node->left = std::move(newRoot->right);
+        newRoot->right = std::move(node);
+
+        update(newRoot->right.get());
+        update(newRoot.get());
+        return newRoot;
     }
 
-    void rotateLeft(std::unique_ptr<TreeNode>& root){
-        std::unique_ptr<TreeNode> otherNode = std::move(root->right);
-        root->left = std::move(otherNode->left);
-        otherNode->left = std::move(root);
-        root = std::move(otherNode);
+    static std::unique_ptr<TreeNode> rotateLeft(std::unique_ptr<TreeNode> node) {
+        std::unique_ptr<TreeNode> newRoot = std::move(node->right);
+        node->right = std::move(newRoot->left);
+        newRoot->left = std::move(node);
+
+        update(newRoot->left.get());
+        update(newRoot.get());
+        return newRoot;
     }
 
     static std::unique_ptr<TreeNode> rebalance(std::unique_ptr<TreeNode> node){
-
+        update(node.get());
+        int bf = getBalance(node);
+        if(bf > 1){
+            if(getBalance(node->left) < 0){
+                node->left = rotateLeft(std::move(node->left));
+            } 
+            return rotateRight(std::move(node));
+        }
+        else if(bf < -1){
+            if(getBalance(node->right) > 0){
+                node->right = rotateRight(std::move(node->right));
+            }
+            return rotateLeft(std::move(node));
+        }
+        return node;
     }
 
     static std::unique_ptr<TreeNode> insert(std::unique_ptr<TreeNode> root, int val){
@@ -112,6 +131,11 @@ public:
             return root;
         }
         return rebalance(std::move(root));
+    }
+
+    // 修正：添加公開的 insert 方法
+    void insert(int val){
+        root = insert(std::move(root), val);
     }
 
     bool find(int value){
@@ -138,48 +162,54 @@ public:
         return false;
     }
 
-    bool remove(int value){
-        return removeHelper(root, value);
+    // 修正：添加公開的 remove 方法
+    void remove(int value){
+        root = removeHelper(std::move(root), value);
     }
 
-    bool removeHelper(std::unique_ptr<TreeNode>& node, int value){
+    // 修正：將你的 removeHelper 改為靜態方法，並修正參數類型
+    static std::unique_ptr<TreeNode> removeHelper(std::unique_ptr<TreeNode> node, int value){
         if(node == nullptr){
-            return false;
+            return nullptr;
         }
         if(node->val < value){
-            return removeHelper(node->right, value);
+            node->right = removeHelper(std::move(node->right), value);
         }
-        if(node->val > value){
-            return removeHelper(node->left, value);
-        }
-        if(node->left == nullptr && node->right == nullptr){
-            node.reset();
-        }
-        else if(node->left == nullptr){
-            node = std::move(node->right);
-        }
-        else if(node->right == nullptr){
-            node = std::move(node->left);
+        else if(node->val > value){
+            node->left = removeHelper(std::move(node->left), value);
         }
         else{
-            TreeNode* succParent = node.get();
-            TreeNode* succ = node->right.get();
-            while(succ->left != nullptr){
-                succParent = succ;
-                succ = succ->left.get();
+            // 找到要刪除的節點
+            if(node->left == nullptr && node->right == nullptr){
+                return nullptr;
             }
-            node->val = succ->val;
-            if(succParent->left.get() == succ){
-                succParent->left.reset(succ->right.release());
+            else if(node->left == nullptr){
+                return std::move(node->right);
+            }
+            else if(node->right == nullptr){
+                return std::move(node->left);
             }
             else{
-                succParent->right.reset(succ->right.release());
+                // 你的原始邏輯，但稍作修正
+                TreeNode* succParent = node.get();
+                TreeNode* succ = node->right.get();
+                while(succ->left != nullptr){
+                    succParent = succ;
+                    succ = succ->left.get();
+                }
+                node->val = succ->val;
+                if(succParent->left.get() == succ){
+                    succParent->left = std::move(succ->right);
+                }
+                else{
+                    succParent->right = std::move(succ->right);
+                }
             }
         }
-        return true;
+        return rebalance(std::move(node));
     }
 
-    void inorder(){ // left root right
+    void inorder(){
         inorderHelper(root);
     }
 
@@ -189,11 +219,11 @@ public:
         }
 
         inorderHelper(node->left);
-        std::cout << node->val << std::endl;
+        std::cout << node->val << " ";
         inorderHelper(node->right);
     }
 
-    void preorder(){ // root left right
+    void preorder(){
         preorderHelper(root);
     }
 
@@ -202,12 +232,12 @@ public:
             return;
         }
 
-        std::cout << node->val << std::endl;
+        std::cout << node->val << " ";
         preorderHelper(node->left);
         preorderHelper(node->right);
     }
 
-    void postorder(){ // left right root
+    void postorder(){
         postorderHelper(root);
     }
 
@@ -217,7 +247,7 @@ public:
         }
         postorderHelper(node->left);
         postorderHelper(node->right);
-        std::cout << node->val << std::endl;
+        std::cout << node->val << " ";
     }
 
     std::vector<int> bfsTraverse(){
@@ -227,7 +257,7 @@ public:
     std::vector<int> bfsTraverseHelper(const std::unique_ptr<TreeNode>& node){
         std::vector<int> result;
         if(node == nullptr){
-            return result;  // 或者可以直接 return {};
+            return result;
         }
 
         std::queue<TreeNode*> queue;
@@ -246,12 +276,12 @@ public:
         return result;
     }
 
-    std::vector<std::vector<int> > bfsTraverseLevel(){  // C++11 需要空格
+    std::vector<std::vector<int> > bfsTraverseLevel(){
         return bfsTraverseLevelHelper(root);
     }
 
     std::vector<std::vector<int> > bfsTraverseLevelHelper(const std::unique_ptr<TreeNode>& node){
-        std::vector<std::vector<int> > result;  // C++11 需要空格
+        std::vector<std::vector<int> > result;
         if(node == nullptr){
             return result;
         }
@@ -273,14 +303,12 @@ public:
                 if(curr->right != nullptr){
                     q.push(curr->right.get());
                 }
-                
             }
             result.push_back(currLevel);
         }
         return result;
     }
 
-    // 提供 getter 以便外部測試
     TreeNode* getRoot() const {
         return root.get();
     }
@@ -294,5 +322,38 @@ public:
         return (root == nullptr);
     }
 
+    // 添加輔助方法來檢查 AVL 性質
+    bool isAVL(){
+        return isAVLHelper(root);
+    }
+
+    bool isAVLHelper(const std::unique_ptr<TreeNode>& node){
+        if(node == nullptr) return true;
+        
+        int balance = height(node->left) - height(node->right);
+        if(balance > 1 || balance < -1) return false;
+        
+        return isAVLHelper(node->left) && isAVLHelper(node->right);
+    }
+
+    void printTree(){
+    printTreeHelper(root, "", true);
+}
+
+void printTreeHelper(const std::unique_ptr<TreeNode>& node, const std::string& prefix, bool isLast){
+    if(node == nullptr) return;
     
+    std::cout << prefix;
+    std::cout << (isLast ? "└── " : "├── ");
+    std::cout << node->val << " (h:" << node->height << ")" << std::endl;
+    
+    if(node->left != nullptr || node->right != nullptr){
+        if(node->right != nullptr){
+            printTreeHelper(node->right, prefix + (isLast ? "    " : "│   "), node->left == nullptr);
+        }
+        if(node->left != nullptr){
+            printTreeHelper(node->left, prefix + (isLast ? "    " : "│   "), true);
+        }
+    }
+}
 };
