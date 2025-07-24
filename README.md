@@ -14,5 +14,6 @@ A **modern C++11** playground where classic data-structures are built **from scr
 | **`queue/`** | `queue.cpp`<br>`circular_queue.cpp` | Array-backed ring buffer, strong exception-safety, automatic growth |
 | **`stack/`** | `stack.cpp` | Auto-resizing array, `noexcept` move ops |
 | **`binary-tree/`** | `binaryTree.cpp`<br>`AVL_tree.cpp` | Basic BST + self-balancing AVL with rotations |
+| **`hash-table/`** | `hash_table.cpp` |
 | **`heap/`** | *(WIP)* | Min/Max template, `heapify`, `buildHeap` |
 | **`graph/`** | *(WIP)* | Adjacency-list BFS / DFS, Dijkstra shortest path |
